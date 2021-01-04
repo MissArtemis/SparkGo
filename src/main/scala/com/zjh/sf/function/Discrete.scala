@@ -4,6 +4,7 @@ import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.ml.feature.{IndexToString, StringIndexer}
+import org.apache.spark.sql.catalyst.util.DateTimeUtils.currentTimestamp
 import scala.collection.immutable.HashMap
 
 class Discrete(
@@ -34,9 +35,44 @@ class Discrete(
     datatmp
   }
 
+  def dateDiffDiscrete(data:DataFrame,dateDiffCols:Array[String]):DataFrame = {
+    import data.sparkSession.implicits._
+    var datatmp = data
+    for(c <- dateDiffCols){
+      datatmp = datatmp.withColumn(c,col(c).cast(TimestampType))
+      datatmp = datatmp.withColumn(c+"_discreted",datediff(current_timestamp(),col(c)))
+    }
+    datatmp = datatmp.drop(dateDiffCols:_*)
+    datatmp
+  }
+
+  def logDateDiscrete(data:DataFrame,logDateCols:Array[String]):DataFrame={
+    import data.sparkSession.implicits._
+    var datatmp  =data
+    for(c <- logDateCols){
+      datatmp = datatmp.withColumn(c,col(c).cast(TimestampType))
+      datatmp = datatmp.withColumn(c+"_discreted",log(datediff(current_timestamp(),col(c))).cast(IntegerType))
+    }
+    datatmp = datatmp.drop(logDateCols:_*)
+    datatmp
+  }
+
+  def labelDiscrete(data:DataFrame,labelCol:String):DataFrame={
+    var datatmp = data
+    val outputCol = "label"
+    val indexer = new StringIndexer().setInputCol(labelCol).setOutputCol(outputCol).fit(datatmp)
+    datatmp = indexer.transform(datatmp)
+    datatmp = datatmp.drop(labelCol)
+    datatmp
+
+  }
+
   def transform():DataFrame={
     var discrete = categoricalDiscrete(data,categoricalCols)
     discrete = logDiscrete(discrete,logCols)
+    discrete = dateDiffDiscrete(discrete,dateDiffCols)
+    discrete = logDateDiscrete(discrete,logDateCols)
+    discrete = labelDiscrete(discrete,labelCol)
     discrete
 
   }
