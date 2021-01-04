@@ -16,69 +16,101 @@ class Discrete(
                 var dateDiffCols:Array[String] = null,
                 var logDateCols:Array[String] = null ) {
 
-  def categoricalDiscrete(data: DataFrame, categoricalCols:Array[String]):DataFrame = {
+  def categoricalDiscrete(data: DataFrame, categoricalCols:Array[String]):(DataFrame,Map[String,DataFrame]) = {
     import data.sparkSession.implicits._
     var datatmp = data
+    var discreteMap = new HashMap[String,DataFrame]
     val outputCols = categoricalCols.map(c=>c+"_discreted")
     val indexer = new StringIndexer().setInputCols(categoricalCols).setOutputCols(outputCols).fit(datatmp)
     datatmp = indexer.transform(datatmp)
+    for(c <- categoricalCols){
+      val columnMap = datatmp.select(c,c+"_discreted").groupBy(c).agg(max(col(c+"_discreted")).alias(c+"_discreted"))
+      discreteMap += (c -> columnMap)
+    }
     datatmp = datatmp.drop(categoricalCols:_*)
-    datatmp
+    (datatmp,discreteMap)
   }
 
-  def logDiscrete(data:DataFrame,logCols:Array[String]):DataFrame = {
+  def logDiscrete(data:DataFrame,logCols:Array[String]):(DataFrame,Map[String,DataFrame]) = {
     import data.sparkSession.implicits._
     var datatmp = data
+    var discreteMap = new HashMap[String,DataFrame]
     for(c <- logCols){
       datatmp = datatmp.withColumn(c+"_discreted",log(datatmp(c)).cast(IntegerType))
+      val columnMap = datatmp.select(c,c+"_discreted").groupBy(c).agg(max(col(c+"_discreted")).alias(c+"_discreted"))
+      discreteMap += (c -> columnMap)
     }
     datatmp = datatmp.drop(logCols:_*)
-    datatmp
+    (datatmp,discreteMap)
   }
 
-  def dateDiffDiscrete(data:DataFrame,dateDiffCols:Array[String]):DataFrame = {
+  def dateDiffDiscrete(data:DataFrame,dateDiffCols:Array[String]):(DataFrame,Map[String,DataFrame]) = {
     import data.sparkSession.implicits._
     var datatmp = data
+    var discreteMap = new HashMap[String,DataFrame]
     for(c <- dateDiffCols){
       datatmp = datatmp.withColumn(c,col(c).cast(TimestampType))
       datatmp = datatmp.withColumn(c+"_discreted",datediff(current_timestamp(),col(c)))
+      val columnMap = datatmp.select(c,c+"_discreted").groupBy(c).agg(max(col(c+"_discreted")).alias(c+"_discreted"))
+      discreteMap += (c -> columnMap)
     }
     datatmp = datatmp.drop(dateDiffCols:_*)
-    datatmp
+    (datatmp,discreteMap)
   }
 
-  def logDateDiscrete(data:DataFrame,logDateCols:Array[String]):DataFrame={
+  def logDateDiscrete(data:DataFrame,logDateCols:Array[String]):(DataFrame,Map[String,DataFrame])={
     import data.sparkSession.implicits._
     var datatmp  =data
+    var discreteMap = new HashMap[String,DataFrame]
     for(c <- logDateCols){
       datatmp = datatmp.withColumn(c,col(c).cast(TimestampType))
       datatmp = datatmp.withColumn(c+"_discreted",log(datediff(current_timestamp(),col(c))).cast(IntegerType))
+      val columnMap = datatmp.select(c,c+"_discreted").groupBy(c).agg(max(col(c+"_discreted")).alias(c+"_discreted"))
+      discreteMap += (c -> columnMap)
     }
     datatmp = datatmp.drop(logDateCols:_*)
-    datatmp
+    (datatmp,discreteMap)
   }
 
-  def labelDiscrete(data:DataFrame,labelCol:String):DataFrame={
+  def labelDiscrete(data:DataFrame,labelCol:String):(DataFrame,Map[String,DataFrame])={
     var datatmp = data
     val outputCol = "label"
+    var discreteMap = new HashMap[String,DataFrame]
     val indexer = new StringIndexer().setInputCol(labelCol).setOutputCol(outputCol).fit(datatmp)
     datatmp = indexer.transform(datatmp)
+    val columnMap = datatmp.select(labelCol,outputCol).groupBy(labelCol).agg(max(outputCol).alias(outputCol))
+    discreteMap += (labelCol -> columnMap)
     datatmp = datatmp.drop(labelCol)
-    datatmp
-
+    (datatmp,discreteMap)
   }
 
-  def transform():DataFrame={
-    var discrete = categoricalDiscrete(data,categoricalCols)
-    discrete = logDiscrete(discrete,logCols)
-    discrete = dateDiffDiscrete(discrete,dateDiffCols)
-    discrete = logDateDiscrete(discrete,logDateCols)
-    discrete = labelDiscrete(discrete,labelCol)
+  def transform():(DataFrame,Map[String,DataFrame])={
+    var reflectMap = new HashMap[String,DataFrame]
+    var transformer = categoricalDiscrete(data,categoricalCols)
+    var discrete = transformer._1
+    var columnMap = transformer._2
+    reflectMap = reflectMap.++(columnMap)
+    transformer = logDiscrete(discrete,logCols)
+    discrete = transformer._1
+    columnMap = transformer._2
+    reflectMap = reflectMap ++ columnMap
+    transformer = dateDiffDiscrete(discrete,dateDiffCols)
+    discrete = transformer._1
+    columnMap = transformer._2
+    reflectMap = reflectMap ++ columnMap
+    transformer = logDateDiscrete(discrete,logDateCols)
+    discrete = transformer._1
+    columnMap = transformer._2
+    reflectMap = reflectMap ++ columnMap
+    transformer = labelDiscrete(discrete,labelCol)
+    discrete = transformer._1
+    columnMap = transformer._2
+    reflectMap = reflectMap ++ columnMap
     val featureCols = discrete.drop("label").columns
     val vectorAssembler = new VectorAssembler().setInputCols(featureCols).setOutputCol("features")
     discrete = vectorAssembler.transform(discrete)
     discrete = discrete.drop(featureCols:_*)
-    discrete
+    (discrete,reflectMap)
 
   }
 

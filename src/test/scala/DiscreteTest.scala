@@ -36,9 +36,11 @@ class DiscreteTest extends AnyFunSuite{
     val df = sparkSession.createDataFrame(rdd,schema)
     df.show(false)
     val discrete = new Discrete(data = df, categoricalCols = Array("B","C","D"),logCols=Array("E","F"),labelCol = "A",dateDiffCols = Array("G"),logDateCols=Array("H"))
-    val TransformedDF = discrete.transform
+    val Transformer = discrete.transform
+    val TransformedDF = Transformer._1
+    val reflectMap = Transformer._2
     TransformedDF.show(false)
-
+    println(reflectMap)
     val logReg = new LogisticRegression().setLabelCol("label").setFeaturesCol("features")
     val model = logReg.fit(TransformedDF)
     val result = model.transform(TransformedDF)
