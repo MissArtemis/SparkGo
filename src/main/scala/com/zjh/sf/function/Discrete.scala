@@ -6,6 +6,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.ml.feature.{IndexToString, StringIndexer}
 import org.apache.spark.sql.catalyst.util.DateTimeUtils.currentTimestamp
 import scala.collection.immutable.HashMap
+import org.apache.spark.ml.feature.VectorAssembler
 
 class Discrete(
                 var data:DataFrame = null,
@@ -73,6 +74,10 @@ class Discrete(
     discrete = dateDiffDiscrete(discrete,dateDiffCols)
     discrete = logDateDiscrete(discrete,logDateCols)
     discrete = labelDiscrete(discrete,labelCol)
+    val featureCols = discrete.drop("label").columns
+    val vectorAssembler = new VectorAssembler().setInputCols(featureCols).setOutputCol("features")
+    discrete = vectorAssembler.transform(discrete)
+    discrete = discrete.drop(featureCols:_*)
     discrete
 
   }
